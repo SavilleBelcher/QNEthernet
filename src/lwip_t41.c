@@ -268,7 +268,7 @@ static void enet_isr();
 #define PHY_PHYSTS_MDI_MDIX_MODE (1 << 14)  // 0: Normal, 1: Swapped
 
 // Reads a PHY register (using MDIO & MDC signals).
-uint16_t mdio_read(uint16_t regaddr) {
+static uint16_t mdio_read_raw(uint16_t regaddr) {
   ENET_EIR = ENET_EIR_MII;  // Clear status
 
   ENET_MMFR = ENET_MMFR_ST(1) | ENET_MMFR_OP(2) | ENET_MMFR_PA(0/*phyaddr*/) |
@@ -285,7 +285,7 @@ uint16_t mdio_read(uint16_t regaddr) {
 }
 
 // Writes a PHY register (using MDIO & MDC signals).
-void mdio_write(uint16_t regaddr, uint16_t data) {
+static void mdio_write_raw(uint16_t regaddr, uint16_t data) {
   ENET_EIR = ENET_EIR_MII;  // Clear status
 
   ENET_MMFR = ENET_MMFR_ST(1) | ENET_MMFR_OP(1) | ENET_MMFR_PA(0/*phyaddr*/) |
@@ -298,6 +298,51 @@ void mdio_write(uint16_t regaddr, uint16_t data) {
   ENET_EIR = ENET_EIR_MII;
   // print("mdio write waited ", count);
   // printhex("mdio write :", data);
+}
+
+// Gets the DEVAD bits for the given regaddr.
+// This is specific to the DP83825I chip.
+//
+// Return table:
+// 0x0000-0x0FFF: 11111
+// 0x1000-0x1FFF: 00011
+// 0x2000-0x2FFF: 00111
+// 0x3000-0xFFFF: 11111
+static inline uint16_t devadFor(uint16_t regaddr) {
+  switch (regaddr & 0xf000) {
+    case 0x0000: return 0b11111;
+    case 0x1000: return 0b00011;  // MMD3
+    case 0x2000: return 0b00111;  // MMD7
+    default:
+      return 0b11111;
+  }
+}
+
+// Reads a PHY register, taking into account extended addresses.
+uint16_t mdio_read(uint16_t regaddr) {
+  if (regaddr < 0x20) {
+    return mdio_read_raw(regaddr);
+  }
+
+  uint16_t devad = devadFor(regaddr);
+  mdio_write_raw(PHY_REGCR, devad);
+  mdio_write_raw(PHY_ADDAR, regaddr & 0x0fff);
+  mdio_write_raw(PHY_REGCR, 0x4000 | devad);
+  return mdio_read_raw(PHY_ADDAR);
+}
+
+// Writes a PHY register, taking into account extended addresses.
+void mdio_write(uint16_t regaddr, uint16_t data) {
+  if (regaddr < 0x20) {
+    mdio_write_raw(regaddr, data);
+    return;
+  }
+
+  uint16_t devad = devadFor(regaddr);
+  mdio_write_raw(PHY_REGCR, devad);
+  mdio_write_raw(PHY_ADDAR, regaddr & 0x0fff);
+  mdio_write_raw(PHY_REGCR, 0x4000 | devad);
+  mdio_write_raw(PHY_ADDAR, data);
 }
 
 // --------------------------------------------------------------------------
