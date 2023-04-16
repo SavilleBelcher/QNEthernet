@@ -352,7 +352,7 @@ void mdio_write(uint16_t regaddr, uint16_t data) {
 // Initial check for hardware. This does nothing if the init state isn't at
 // START. After this function returns, the init state will either be NO_HARDWARE
 // or PHY_INITIALIZED, unless it wasn't START when called.
-static void t41_init_phy() {
+void t41_init_phy() {
   if (s_initState != kInitStateStart) {
     return;
   }
